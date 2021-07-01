@@ -106,6 +106,7 @@ public abstract class FrameworkConstants {
     public static final String ASSOCIATED_ID = "associatedID";
 
     public static final String SECRET_KEY_CLAIM_URL = "http://wso2.org/claims/identity/secretkey";
+    public static final String ENABLE_ENHANCE_FEATURE = "JITProvisioning.EnableEnhancedFeature";
 
     // Error details sent from authenticators
     public static final String AUTH_ERROR_CODE = "AuthErrorCode";
