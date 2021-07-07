@@ -58,6 +58,8 @@ import org.wso2.carbon.identity.core.ServiceURLBuilder;
 import org.wso2.carbon.identity.core.URLBuilderException;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.handler.event.account.lock.exception.AccountLockServiceException;
+import org.wso2.carbon.identity.handler.event.account.lock.service.AccountLockService;
 import org.wso2.carbon.identity.user.profile.mgt.UserProfileAdmin;
 import org.wso2.carbon.identity.user.profile.mgt.UserProfileException;
 import org.wso2.carbon.identity.user.profile.mgt.association.federation.FederatedAssociationManager;
@@ -65,6 +67,7 @@ import org.wso2.carbon.identity.user.profile.mgt.association.federation.exceptio
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.idp.mgt.IdentityProviderManager;
 import org.wso2.carbon.user.api.UserStoreException;
+import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.UserRealm;
 import org.wso2.carbon.user.core.claim.ClaimManager;
 import org.wso2.carbon.user.core.service.RealmService;
@@ -266,6 +269,7 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
     private PostAuthnHandlerFlowStatus handleRequestFlow(HttpServletRequest request, HttpServletResponse response,
             AuthenticationContext context) throws PostAuthenticationFailedException {
 
+        String retryURL = ConfigurationFacade.getInstance().getAuthenticationEndpointRetryURL();
         SequenceConfig sequenceConfig = context.getSequenceConfig();
         boolean isUserCreated = false;
         for (Map.Entry<Integer, StepConfig> entry : sequenceConfig.getStepMap().entrySet()) {
@@ -334,6 +338,14 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
                         username = sequenceConfig.getAuthenticatedUser().getUserName();
                         isUserCreated = true;
                     }
+                    // Check if the associated local account is locked.
+                    if (isAccountLocked(username, context.getTenantDomain())) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("The account is locked for the user " + username);
+                        }
+                        handleAccountLockLoginFailure(retryURL, context, response);
+                        return PostAuthnHandlerFlowStatus.INCOMPLETE;
+                    }
                     if (log.isDebugEnabled()) {
                         log.debug("User : " + sequenceConfig.getAuthenticatedUser().getUserId() + " coming from "
                                 + externalIdPConfig.getIdPName() + " do have a local account, with the username "
@@ -352,6 +364,44 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
 
         return StringUtils.isNotBlank(userIdClaimUriInLocalDialect) && StringUtils.isNotBlank
                 (localClaimValues.get(userIdClaimUriInLocalDialect));
+    }
+
+    private boolean isAccountLocked(String username, String tenantDomain)
+            throws PostAuthenticationFailedException {
+
+        AccountLockService accountLockService = FrameworkServiceDataHolder.getInstance().getAccountLockService();
+        try {
+            return accountLockService.isAccountLocked(username, tenantDomain);
+        } catch (AccountLockServiceException e) {
+            throw new PostAuthenticationFailedException(
+                    ErrorMessages.ERROR_WHILE_CHECKING_ACCOUNT_LOCK_STATUS.getCode(),
+                    String.format(ErrorMessages.ERROR_WHILE_CHECKING_ACCOUNT_LOCK_STATUS.getMessage(), username), e);
+        }
+    }
+
+    private void handleAccountLockLoginFailure(String retryPage, AuthenticationContext context,
+                                               HttpServletResponse response) throws PostAuthenticationFailedException {
+
+        try {
+            // ToDo: Add support to configure enable/disable authentication failure reason.
+            boolean showAuthFailureReason = true;
+            StringBuilder urlBuilder = new StringBuilder();
+            urlBuilder.append(retryPage);
+            urlBuilder.append("?sp=").append(context.getServiceProviderName());
+            String retryParam = null;
+            if (showAuthFailureReason) {
+                retryParam = "&authFailure=true&authFailureMsg=error.user.account.locked&errorCode=" +
+                        UserCoreConstants.ErrorCode.USER_IS_LOCKED;
+            } else {
+                retryParam = "&authFailure=true&authFailureMsg=login.fail.message";
+            }
+            urlBuilder.append(retryParam);
+            context.setRetrying(false);
+            response.sendRedirect(urlBuilder.toString());
+        } catch (IOException e) {
+            handleExceptions(ErrorMessages.ERROR_WHILE_HANDLING_ACCOUNT_LOCK_FAILURE_FED_USERS.getMessage(),
+                    ErrorMessages.ERROR_WHILE_HANDLING_ACCOUNT_LOCK_FAILURE_FED_USERS.getCode(), e);
+        }
     }
 
     /**
