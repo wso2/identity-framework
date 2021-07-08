@@ -341,7 +341,8 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
                     // Check if the associated local account is locked.
                     if (isAccountLocked(username, context.getTenantDomain())) {
                         if (log.isDebugEnabled()) {
-                            log.debug("The account is locked for the user " + username);
+                            log.debug(String.format("The account is locked for the user: %s in the " +
+                                    "tenant domain: %s ", username, context.getTenantDomain()));
                         }
                         handleAccountLockLoginFailure(retryURL, context, response);
                         return PostAuthnHandlerFlowStatus.INCOMPLETE;
@@ -385,19 +386,18 @@ public class JITProvisioningPostAuthenticationHandler extends AbstractPostAuthnH
         try {
             // ToDo: Add support to configure enable/disable authentication failure reason.
             boolean showAuthFailureReason = true;
-            StringBuilder urlBuilder = new StringBuilder();
-            urlBuilder.append(retryPage);
-            urlBuilder.append("?sp=").append(context.getServiceProviderName());
-            String retryParam = null;
+            retryPage = FrameworkUtils.appendQueryParamsStringToUrl(retryPage,
+                    "sp=" + context.getServiceProviderName());
+            String retryParam ;
             if (showAuthFailureReason) {
                 retryParam = "&authFailure=true&authFailureMsg=error.user.account.locked&errorCode=" +
                         UserCoreConstants.ErrorCode.USER_IS_LOCKED;
             } else {
                 retryParam = "&authFailure=true&authFailureMsg=login.fail.message";
             }
-            urlBuilder.append(retryParam);
+            retryPage = FrameworkUtils.appendQueryParamsStringToUrl(retryPage, retryParam);
             context.setRetrying(false);
-            response.sendRedirect(urlBuilder.toString());
+            response.sendRedirect(retryPage);
         } catch (IOException e) {
             handleExceptions(ErrorMessages.ERROR_WHILE_HANDLING_ACCOUNT_LOCK_FAILURE_FED_USERS.getMessage(),
                     ErrorMessages.ERROR_WHILE_HANDLING_ACCOUNT_LOCK_FAILURE_FED_USERS.getCode(), e);
