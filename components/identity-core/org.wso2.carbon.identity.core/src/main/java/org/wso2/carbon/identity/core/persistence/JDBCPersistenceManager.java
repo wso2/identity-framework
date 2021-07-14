@@ -19,12 +19,14 @@
 package org.wso2.carbon.identity.core.persistence;
 
 import org.apache.axiom.om.OMElement;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.base.IdentityRuntimeException;
 import org.wso2.carbon.identity.core.util.IdentityConfigParser;
 import org.wso2.carbon.identity.core.util.IdentityCoreConstants;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -46,6 +48,7 @@ public class JDBCPersistenceManager {
     private static Log log = LogFactory.getLog(JDBCPersistenceManager.class);
     private static volatile JDBCPersistenceManager instance;
     private DataSource dataSource;
+    private DataSource sessionDataSource;
     // This property refers to Active transaction state of postgresql db
     private static final String PG_ACTIVE_SQL_TRANSACTION_STATE = "25001";
     private static final String POSTGRESQL_DATABASE = "PostgreSQL";
@@ -106,6 +109,13 @@ public class JDBCPersistenceManager {
                 Context ctx = new InitialContext();
                 dataSource = (DataSource) ctx.lookup(dataSourceName);
             }
+            String sessionDBName = IdentityUtil.getProperty("JDBCPersistenceManager.SessionDataPersist.DataSource.Name");
+            if (StringUtils.isNotBlank(sessionDBName)) {
+                Context ctx = new InitialContext();
+                sessionDataSource = (DataSource) ctx.lookup(sessionDBName);
+            } else {
+                sessionDataSource = dataSource;
+            }
         } catch (NamingException e) {
             String errorMsg = "Error when looking up the Identity Data Source.";
             throw IdentityRuntimeException.error(errorMsg, e);
@@ -163,6 +173,39 @@ public class JDBCPersistenceManager {
             return dbConnection;
         } catch (SQLException e) {
             String errMsg = "Error when getting a database connection object from the Identity data source.";
+            throw IdentityRuntimeException.error(errMsg, e);
+        }
+    }
+
+    /**
+     * Returns an database connection for Session data source.
+     *
+     * @param shouldApplyTransaction apply transaction or not
+     * @return Database connection.
+     * @throws IdentityException Exception occurred when getting the data source.
+     */
+    public Connection getSessionDBConnection(boolean shouldApplyTransaction) throws IdentityRuntimeException {
+
+        try {
+            Connection dbConnection = sessionDataSource.getConnection();
+            if (shouldApplyTransaction) {
+                dbConnection.setAutoCommit(false);
+                try {
+                    dbConnection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                } catch (SQLException e) {
+                    // Handling startup error for postgresql
+                    // Active SQL Transaction means that connection is not committed.
+                    // Need to commit before setting isolation property.
+                    if (dbConnection.getMetaData().getDriverName().contains(POSTGRESQL_DATABASE)
+                            && PG_ACTIVE_SQL_TRANSACTION_STATE.equals(e.getSQLState())) {
+                        dbConnection.commit();
+                        dbConnection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                    }
+                }
+            }
+            return dbConnection;
+        } catch (SQLException e) {
+            String errMsg = "Error when getting a database connection object from the Session data source.";
             throw IdentityRuntimeException.error(errMsg, e);
         }
     }

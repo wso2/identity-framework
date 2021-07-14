@@ -55,6 +55,17 @@ public class IdentityDatabaseUtil {
     }
 
     /**
+     * Get a database connection instance from the Session Persistence
+     *
+     * @return Database Connection
+     * @throws IdentityRuntimeException Error when getting a database connection to Session database
+     */
+    public static Connection getSessionDBConnection(boolean shouldApplyTransaction) throws IdentityRuntimeException {
+
+        return JDBCPersistenceManager.getInstance().getSessionDBConnection(shouldApplyTransaction);
+    }
+
+    /**
      * Get database source instance from the Identity Persistence Manager
      *
      * @return Database Source
