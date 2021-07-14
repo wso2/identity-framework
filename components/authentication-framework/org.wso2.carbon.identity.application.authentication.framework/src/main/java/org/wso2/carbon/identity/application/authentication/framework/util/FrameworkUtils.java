@@ -3032,4 +3032,14 @@ public class FrameworkUtils {
         context.setRetrying(false);
         context.setCurrentAuthenticator(null);
     }
+
+    /**
+     * Check whether the JIT provisioning enhanced feature is enabled.
+     *
+     * @return true if the JIT provisioning enhanced features is enabled else return false.
+     */
+    public static boolean isJITProvisionedEnhancedFeatureEnabled() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(FrameworkConstants.ENABLE_JIT_PROVISIONING_ENHANCE_FEATURE));
+    }
 }
